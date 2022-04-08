@@ -1,0 +1,138 @@
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+	"math/big"
+)
+
+var b58Alphabet = []byte("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+var addressChecksumLen = 4
+
+type Wallet struct {
+	PublicKey string
+}
+
+//func (w Wallet) GetAddress() []byte {
+//	pubKeyHash := HashPubKey(w.PublicKey)
+//
+//	versionedPayload := append([]byte{version}, pubKeyHash...)
+//	checksum := checksum(versionedPayload)
+//
+//	fullPayload := append(versionedPayload, checksum...)
+//	address := Base58Encode(fullPayload)
+//
+//	return address
+//}
+//func HashPubKey(pubKey []byte) []byte {
+//	publicSHA256 := sha256.Sum256(pubKey)
+//
+//	RIPEMD160Hasher := ripemd160.New()
+//	_, err := RIPEMD160Hasher.Write(publicSHA256[:])
+//	publicRIPEMD160 := RIPEMD160Hasher.Sum(nil)
+//
+//	return publicRIPEMD160
+//}
+
+func checksum(payload []byte) []byte {
+	firstSHA := sha256.Sum256(payload)
+	fmt.Printf("firstSHA:%x\n", firstSHA)
+	secondSHA := sha256.Sum256(firstSHA[:])
+	fmt.Printf("secondSHA:%x\n", secondSHA)
+	fmt.Printf("sum:%x\n", secondSHA[:addressChecksumLen])
+	return secondSHA[:addressChecksumLen]
+}
+
+func ValidateAddress(address string) bool {
+	pubKeyHash := Base58Decode([]byte(address))
+	actualChecksum := pubKeyHash[len(pubKeyHash)-addressChecksumLen:]
+	version := pubKeyHash[0]
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-addressChecksumLen]
+	targetChecksum := checksum(append([]byte{version}, pubKeyHash...))
+	return bytes.Compare(actualChecksum, targetChecksum) == 0
+}
+
+func Base58Encode(input []byte) []byte {
+	var result []byte
+
+	x := big.NewInt(0).SetBytes(input)
+
+	base := big.NewInt(int64(len(b58Alphabet)))
+	zero := big.NewInt(0)
+
+	mod := &big.Int{}
+	for x.Cmp(zero) != 0 {
+		x.DivMod(x, base, mod) // 对x取余数
+		result = append(result, b58Alphabet[mod.Int64()])
+	}
+
+	ReverseBytes(result)
+
+	for _, b := range input {
+
+		if b == 0x00 {
+			result = append([]byte{b58Alphabet[0]}, result...)
+		} else {
+			break
+		}
+	}
+
+	return result
+
+}
+
+//反转字节数组
+func ReverseBytes(data []byte) {
+	for i, j := 0, len(data)-1; i < j; i, j = i+1, j-1 {
+		data[i], data[j] = data[j], data[i]
+	}
+}
+
+func Base58Decode(input []byte) []byte {
+	result := big.NewInt(0)
+	zeroBytes := 0
+
+	for b := range input {
+		if b == 0x00 {
+			zeroBytes++
+		}
+	}
+
+	payload := input[zeroBytes:]
+	for _, b := range payload {
+		charIndex := bytes.IndexByte(b58Alphabet, b)
+		result.Mul(result, big.NewInt(58))
+		result.Add(result, big.NewInt(int64(charIndex)))
+	}
+
+	decoded := result.Bytes()
+	decoded = append(bytes.Repeat([]byte{byte(0x00)}, zeroBytes), decoded...)
+
+	return decoded
+}
+
+func main() {
+	org := []byte("qwerty")
+	fmt.Println(string(org))
+	ReverseBytes(org)
+	fmt.Println(string(org))
+	//测试编码
+	fmt.Printf("%s\n", string(Base58Encode([]byte("hello jonson"))))
+	baseEncrypted := "6aefc4797ba255d8e3b848fcb0c0a627eaebfe8a"
+	str1 := "20090103"
+	str2 := "20090103"
+	str3 := "19750405"
+	encrypted1 := baseEncrypted + str1 + str2 + str3
+	//encrypted1 = "23F0512AFB17E20FAB73656C40E1F11632B190C3687FC5FF4144AAB232FD597C"
+	fmt.Println("encrypted1:", encrypted1)
+	fmt.Println(len(encrypted1))
+	//encrypted2 := str1 + baseEncrypted + str2 + str3
+	//encrypted3 := str1 + str2 + baseEncrypted + str3
+	choose := "80" + encrypted1 //+ "0x01"
+	fmt.Println("choose:", choose)
+	sumByte := checksum([]byte(choose))
+	hexByte := append([]byte(choose), sumByte...)
+	finalBytes := Base58Encode(hexByte)
+	fmt.Printf("final:%s\n", finalBytes)
+}
